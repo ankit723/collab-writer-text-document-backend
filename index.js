@@ -3,13 +3,6 @@ const { Server } = require('socket.io');
 const express = require('express');
 const http = require('http');
 const app = express();
-app.use((req, res, next) => {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-    next();
-});
-  
 
 let isConnected = false;
 
@@ -39,7 +32,12 @@ const Document = mongoose.models.Document || mongoose.model('Document', document
 connectToDatabase();
 
 const server = http.createServer(app);
-const io = new Server(server);
+const io = new Server(server, {
+    cors: {
+        origin: "*",
+        methods: ['GET', 'POST']
+    }
+});
 
 io.on("connection", socket => {
     socket.on('get-document', async id => {
@@ -61,5 +59,5 @@ server.listen(3001, () => {
 });
 
 module.exports = (req, res) => {
-    res.status(200).send('Server is up and running');
+    res.status(200).send('Server is running');
 };
