@@ -2,7 +2,9 @@ const mongoose = require('mongoose');
 const { Server } = require('socket.io');
 const express = require('express');
 const http = require('http');
+const cors=require('cors')
 const app = express();
+app.use(cors())
 
 let isConnected = false;
 
@@ -34,7 +36,7 @@ connectToDatabase();
 const server = http.createServer(app);
 const io = new Server(server, {
     cors: {
-        origin: "https://collab-writer.vercel.app",
+        origin: "*",
         methods: ['GET', 'POST']
     }
 });
