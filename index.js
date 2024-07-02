@@ -54,5 +54,5 @@ server.listen(3001, () => {
 });
 
 module.exports = (req, res) => {
-    res.status(200).send('Server is running');
+    res.status(200).send('Server is up and running');
 };
