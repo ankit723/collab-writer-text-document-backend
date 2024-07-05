@@ -78,8 +78,8 @@ wss.on("connection", async (ws) => {
     });
 });
 
-server.listen(3001, () => {
-    console.log("WebSocket server started and listening on port 3001");
+server.listen(5001, () => {
+    console.log("WebSocket server started and listening on port 5001");
 });
 
 module.exports = (req, res) => {
