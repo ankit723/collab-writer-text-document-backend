@@ -3,6 +3,14 @@ const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
 const cors = require('cors');
+const pty = require('node-pty');
+const fs = require('fs/promises');
+const { readdir } = require('fs');
+const path = require('path')
+const chokidar = require('chokidar');
+
+
+
 
 const app = express();
 app.use(cors());
@@ -37,8 +45,24 @@ connectToDatabase();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
+var ptyProcess = pty.spawn('bash', [], {
+    name: 'xterm-color',
+    cols: 80,
+    rows: 30,
+    cwd: process.env.INIT_CWD+ "/user",
+    env: process.env
+});
+
 wss.on("connection", async (ws) => {
     console.log("WebSocket connection established");
+    ptyProcess.write('\r')
+    ptyProcess.onData((data)=>{
+        ws.send(JSON.stringify({type:"terminal:data", data:data}))
+    })
+
+    chokidar.watch('./user').on('all', (event, path) => {
+        ws.send(JSON.stringify({type:"file:refresh", data:event}))
+    });
 
     ws.on('message', async (message) => {
         try {
@@ -61,8 +85,16 @@ wss.on("connection", async (ws) => {
                 });
             } else if (parsedMessage.type === 'save-document') {
                 const data = parsedMessage.data;
-                await Document.findOneAndUpdate({ id: parsedMessage.id }, { data }, { upsert: true });
+                await Document.findOneAndUpdate({ id: parsedMessage.id }, { data });
                 console.log("Document saved:", parsedMessage.id);
+            } else if (parsedMessage.type === 'terminal:write') {
+                const data = parsedMessage.data;
+                console.log(data)
+                ptyProcess.write(data);
+            }else if (parsedMessage.type === 'file:change') {
+                const data = parsedMessage.data;
+                console.log(data)
+                await fs.writeFile(`./user${data.path}`, data.content)
             }
         } catch (error) {
             console.error("Error handling message:", error);
@@ -78,9 +110,43 @@ wss.on("connection", async (ws) => {
     });
 });
 
+app.get('/files', async(req, res)=>{
+    const fileTree=await generateFileTree("./user")
+    return res. json({ tree: fileTree })
+})
+
+app.get('/files/content', async(req, res)=>{
+    const path = req.query.path;
+    const content=await fs.readFile(`./user${path}`, 'utf-8')
+    return res.json({content});
+})
+
 server.listen(5001, () => {
     console.log("WebSocket server started and listening on port 5001");
 });
+
+async function generateFileTree(directory){
+    const tree={}
+
+    async function buildTree(currentDir, currentTree){
+        const files=await fs.readdir(currentDir)
+
+        for(const file of files){
+            const filePath=path.join(currentDir, file)
+            const stat=await fs.stat(filePath)
+
+            if(stat.isDirectory()){
+                currentTree[file]={}
+                await buildTree(filePath, currentTree[file])
+            }else{
+                currentTree[file]=null
+            }
+        }
+    }
+
+    await buildTree(directory, tree)
+    return tree;
+}
 
 module.exports = (req, res) => {
     res.status(200).send('Server is running');
