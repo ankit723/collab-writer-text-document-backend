@@ -55,7 +55,6 @@ var ptyProcess = pty.spawn('bash', [], {
 
 wss.on("connection", async (ws) => {
     console.log("WebSocket connection established");
-    ptyProcess.write('\r')
     ptyProcess.onData((data)=>{
         ws.send(JSON.stringify({type:"terminal:data", data:data}))
     })
@@ -87,14 +86,26 @@ wss.on("connection", async (ws) => {
                 const data = parsedMessage.data;
                 await Document.findOneAndUpdate({ id: parsedMessage.id }, { data });
                 console.log("Document saved:", parsedMessage.id);
-            } else if (parsedMessage.type === 'terminal:write') {
+            } else if (parsedMessage.type === 'project:started') {
                 const data = parsedMessage.data;
-                console.log(data)
+                try {
+                    // Check if the directory exists
+                    await fs.access('user/'+data.id);
+                    console.log(`Directory ${data.id} already exists.`);
+                } catch (error) {
+                    // Directory does not exist, so create it
+                    await fs.mkdir('user/'+data.id);
+                    console.log(`Directory ${data.id} created.`);
+                }
+                ptyProcess.write(`cd ${data.id} \r\n`);
+                ptyProcess.write(`clear ${data.id} \r\n`);
+            }else if (parsedMessage.type === 'terminal:write') {
+                const data = parsedMessage.data;
                 ptyProcess.write(data);
-            }else if (parsedMessage.type === 'file:change') {
+            } else if (parsedMessage.type === 'file:change') {
                 const data = parsedMessage.data;
                 console.log(data)
-                await fs.writeFile(`./user${data.path}`, data.content)
+                await fs.writeFile(`./user/${data.pId}/${data.path}`, data.content)
             }
         } catch (error) {
             console.error("Error handling message:", error);
@@ -117,7 +128,8 @@ app.get('/files', async(req, res)=>{
 
 app.get('/files/content', async(req, res)=>{
     const path = req.query.path;
-    const content=await fs.readFile(`./user${path}`, 'utf-8')
+    const pId=req.query.pId;
+    const content=await fs.readFile(`./user/${pId}/${path}`, 'utf-8')
     return res.json({content});
 })
 
