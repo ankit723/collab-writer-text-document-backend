@@ -147,7 +147,7 @@ async function generateFileTree(directory){
             const filePath=path.join(currentDir, file)
             const stat=await fs.stat(filePath)
 
-            if(stat.isDirectory()){
+            if(stat.isDirectory() && file!=="node_modules"){
                 currentTree[file]={}
                 await buildTree(filePath, currentTree[file])
             }else{
