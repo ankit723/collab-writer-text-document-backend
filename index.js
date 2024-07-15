@@ -102,10 +102,25 @@ wss.on("connection", async (ws) => {
             }else if (parsedMessage.type === 'terminal:write') {
                 const data = parsedMessage.data;
                 ptyProcess.write(data);
-            } else if (parsedMessage.type === 'file:change') {
+            }else if (parsedMessage.type === 'file:change') {
                 const data = parsedMessage.data;
                 console.log(data)
                 await fs.writeFile(`./user/${data.pId}/${data.path}`, data.content)
+            }else if (parsedMessage.type === 'file:rename') {
+                const data = parsedMessage.data;
+                await fs.rename(data.oldPath, data.newPath)
+            }else if (parsedMessage.type === 'file:delete') {
+                const data = parsedMessage.data;
+                await fs.unlink(data.filePath)
+            }else if (parsedMessage.type === 'file:create') {
+                const data = parsedMessage.data;
+                await fs.writeFile(data.filePath, '')
+            }else if (parsedMessage.type === 'folder:delete') {
+                const data = parsedMessage.data;
+                await deleteFolderRecursive(data.filePath)
+            }else if (parsedMessage.type === 'folder:create') {
+                const data = parsedMessage.data;
+                await fs.mkdir(data.filePath)
             }
         } catch (error) {
             console.error("Error handling message:", error);
@@ -158,6 +173,33 @@ async function generateFileTree(directory){
 
     await buildTree(directory, tree)
     return tree;
+}
+
+async function deleteFolderRecursive(folderPath) {
+    try {
+        const entries = await fs.readdir(folderPath); // Read directory contents
+
+        // Iterate over each entry in the directory
+        for (const entry of entries) {
+            const entryPath = path.join(folderPath, entry); // Full path of the entry
+            const stat = await fs.stat(entryPath); // Get the file/directory details
+
+            if (stat.isDirectory()) {
+                // Recursively delete subdirectory
+                await deleteFolderRecursive(entryPath);
+            } else {
+                // Delete file
+                await fs.unlink(entryPath);
+                console.log(`Deleted file ${entryPath}`);
+            }
+        }
+
+        // After deleting all contents, delete the empty directory itself
+        await fs.rmdir(folderPath);
+        console.log(`Deleted directory ${folderPath}`);
+    } catch (err) {
+        console.error(`Error deleting folder ${folderPath}:`, err);
+    }
 }
 
 module.exports = (req, res) => {
