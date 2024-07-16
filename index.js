@@ -5,12 +5,8 @@ const WebSocket = require('ws');
 const cors = require('cors');
 const pty = require('node-pty');
 const fs = require('fs/promises');
-const { readdir } = require('fs');
-const path = require('path')
+const path = require('path');
 const chokidar = require('chokidar');
-
-
-
 
 const app = express();
 app.use(cors());
@@ -45,19 +41,11 @@ connectToDatabase();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
-var ptyProcess = pty.spawn('bash', [], {
-    name: 'xterm-color',
-    cols: 80,
-    rows: 30,
-    cwd: process.env.INIT_CWD+ "/user",
-    env: process.env
-});
+// Map to store terminal processes for each project
+const terminals = {};
 
 wss.on("connection", async (ws) => {
     console.log("WebSocket connection established");
-    ptyProcess.onData((data)=>{
-        ws.send(JSON.stringify({type:"terminal:data", data:data}))
-    })
 
     chokidar.watch('./user').on('all', (event, path) => {
         ws.send(JSON.stringify({type:"file:refresh", data:event}))
@@ -88,39 +76,67 @@ wss.on("connection", async (ws) => {
                 console.log("Document saved:", parsedMessage.id);
             } else if (parsedMessage.type === 'project:started') {
                 const data = parsedMessage.data;
+                const projectId = data.id;
+
                 try {
                     // Check if the directory exists
-                    await fs.access('user/'+data.id);
-                    console.log(`Directory ${data.id} already exists.`);
+                    await fs.access('user/' + projectId);
+                    console.log(`Directory ${projectId} already exists.`);
                 } catch (error) {
                     // Directory does not exist, so create it
-                    await fs.mkdir('user/'+data.id);
-                    console.log(`Directory ${data.id} created.`);
+                    await fs.mkdir('user/' + projectId);
+                    console.log(`Directory ${projectId} created.`);
                 }
-                ptyProcess.write(`cd ${data.id} \r\n`);
-                ptyProcess.write(`clear ${data.id} \r\n`);
-            }else if (parsedMessage.type === 'terminal:write') {
+
+                if (!terminals[projectId]) {
+                    const ptyProcess = pty.spawn('bash', [], {
+                        name: 'xterm-color',
+                        cols: 80,
+                        rows: 30,
+                        cwd: path.join(process.env.INIT_CWD, "/user", projectId),
+                        env: process.env
+                    });
+
+                    terminals[projectId] = ptyProcess;
+
+                    ptyProcess.onData((data) => {
+                        wss.clients.forEach(client => {
+                            if (client.readyState === WebSocket.OPEN) {
+                                client.send(JSON.stringify({ type: "terminal:data", data: data, projectId: projectId }));
+                            }
+                        });
+                    });
+
+                    ptyProcess.write(`cd ${projectId} \r\n`);
+                    ptyProcess.write(`clear \r\n`);
+                }
+
+                ws.send(JSON.stringify({ type: 'project:started', projectId: projectId }));
+            } else if (parsedMessage.type === 'terminal:write') {
                 const data = parsedMessage.data;
-                ptyProcess.write(data);
-            }else if (parsedMessage.type === 'file:change') {
+                const projectId = parsedMessage.projectId;
+                if (terminals[projectId]) {
+                    terminals[projectId].write(data);
+                }
+            } else if (parsedMessage.type === 'file:change') {
                 const data = parsedMessage.data;
-                console.log(data)
-                await fs.writeFile(`./user/${data.pId}/${data.path}`, data.content)
-            }else if (parsedMessage.type === 'file:rename') {
+                console.log(data);
+                await fs.writeFile(`./user/${data.pId}/${data.path}`, data.content);
+            } else if (parsedMessage.type === 'file:rename') {
                 const data = parsedMessage.data;
-                await fs.rename(data.oldPath, data.newPath)
-            }else if (parsedMessage.type === 'file:delete') {
+                await fs.rename(data.oldPath, data.newPath);
+            } else if (parsedMessage.type === 'file:delete') {
                 const data = parsedMessage.data;
-                await fs.unlink(data.filePath)
-            }else if (parsedMessage.type === 'file:create') {
+                await fs.unlink(data.filePath);
+            } else if (parsedMessage.type === 'file:create') {
                 const data = parsedMessage.data;
-                await fs.writeFile(data.filePath, '')
-            }else if (parsedMessage.type === 'folder:delete') {
+                await fs.writeFile(data.filePath, '');
+            } else if (parsedMessage.type === 'folder:delete') {
                 const data = parsedMessage.data;
-                await deleteFolderRecursive(data.filePath)
-            }else if (parsedMessage.type === 'folder:create') {
+                await deleteFolderRecursive(data.filePath);
+            } else if (parsedMessage.type === 'folder:create') {
                 const data = parsedMessage.data;
-                await fs.mkdir(data.filePath)
+                await fs.mkdir(data.filePath);
             }
         } catch (error) {
             console.error("Error handling message:", error);
@@ -136,42 +152,42 @@ wss.on("connection", async (ws) => {
     });
 });
 
-app.get('/files', async(req, res)=>{
-    const fileTree=await generateFileTree("./user")
-    return res. json({ tree: fileTree })
-})
+app.get('/files', async (req, res) => {
+    const fileTree = await generateFileTree("./user");
+    return res.json({ tree: fileTree });
+});
 
-app.get('/files/content', async(req, res)=>{
+app.get('/files/content', async (req, res) => {
     const path = req.query.path;
-    const pId=req.query.pId;
-    const content=await fs.readFile(`./user/${pId}/${path}`, 'utf-8')
-    return res.json({content});
-})
+    const pId = req.query.pId;
+    const content = await fs.readFile(`./user/${pId}/${path}`, 'utf-8');
+    return res.json({ content });
+});
 
 server.listen(5001, () => {
     console.log("WebSocket server started and listening on port 5001");
 });
 
-async function generateFileTree(directory){
-    const tree={}
+async function generateFileTree(directory) {
+    const tree = {};
 
-    async function buildTree(currentDir, currentTree){
-        const files=await fs.readdir(currentDir)
+    async function buildTree(currentDir, currentTree) {
+        const files = await fs.readdir(currentDir);
 
-        for(const file of files){
-            const filePath=path.join(currentDir, file)
-            const stat=await fs.stat(filePath)
+        for (const file of files) {
+            const filePath = path.join(currentDir, file);
+            const stat = await fs.stat(filePath);
 
-            if(stat.isDirectory() && file!=="node_modules"){
-                currentTree[file]={}
-                await buildTree(filePath, currentTree[file])
-            }else{
-                currentTree[file]=null
+            if (stat.isDirectory() && file !== "node_modules") {
+                currentTree[file] = {};
+                await buildTree(filePath, currentTree[file]);
+            } else {
+                currentTree[file] = null;
             }
         }
     }
 
-    await buildTree(directory, tree)
+    await buildTree(directory, tree);
     return tree;
 }
 
