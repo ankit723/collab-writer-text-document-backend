@@ -168,9 +168,11 @@ app.get('/files/content', async (req, res) => {
     return res.json({ content });
 });
 
-server.listen(5001, "0.0.0.0", () => {
-    console.log("WebSocket server started and listening on port 5001");
+const PORT = process.env.PORT || 5001; // Use Railway-assigned port or fallback to 5001
+server.listen(PORT, "0.0.0.0", () => {
+    console.log(`WebSocket server started and listening on port ${PORT}`);
 });
+
 
 async function generateFileTree(directory) {
     const tree = {};
