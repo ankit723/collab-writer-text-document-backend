@@ -152,6 +152,10 @@ wss.on("connection", async (ws) => {
     });
 });
 
+app.get('/', (req, res)=>{
+    res.send("Test Successfull")
+})
+
 app.get('/files', async (req, res) => {
     const fileTree = await generateFileTree("./user");
     return res.json({ tree: fileTree });
