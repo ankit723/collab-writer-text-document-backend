@@ -14,10 +14,10 @@ RUN npm ci --omit=dev
 COPY . .
 
 # Use environment variable for port binding
-ENV PORT=5000
+ENV PORT=5001
 
 # Expose the correct port
-EXPOSE 5000
+EXPOSE 5001
 
 # Start the application
 CMD ["node", "index.js"]
