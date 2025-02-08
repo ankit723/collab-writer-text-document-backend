@@ -89,7 +89,7 @@ wss.on("connection", async (ws) => {
                 }
 
                 if (!terminals[projectId]) {
-                    const ptyProcess = pty.spawn('bash', [], {
+                    const ptyProcess = pty.spawn('sh', [], {
                         name: 'xterm-color',
                         cols: 80,
                         rows: 30,
